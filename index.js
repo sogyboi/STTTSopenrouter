@@ -1,186 +1,215 @@
-import { saveTtsProviderSettings } from '../../tts/index.js';
+import { extension_settings, getContext, renderExtensionTemplateAsync } from '../../../extensions.js';
+import { eventSource, event_types } from '../../../../script.js';
 
-export { OpenRouterTtsProvider };
+// Define the unique key for this extension's settings
+const EXTENSION_NAME = 'openrouter_tts_standalone';
+
+// Default settings
+const defaultSettings = {
+    enabled: false,
+    apiKey: '',
+    model: 'mistralai/voxtral-mini-tts-2603',
+    voice: 'alloy',
+    speed: 1.0,
+};
+
+// Global audio element
+const audioElement = new Audio();
 
 /**
- * OpenRouter TTS Provider for SillyTavern
- * Uses Mistral's Voxtral Mini TTS via OpenRouter's API.
- * Makes direct calls to OpenRouter (they support CORS).
+ * Ensures settings are initialized
  */
-class OpenRouterTtsProvider {
-    settings;
-    voices = [];
-    separator = ' . ';
-    audioElement = document.createElement('audio');
-
-    defaultSettings = {
-        voiceMap: {},
-        apiKey: '',
-        model: 'mistralai/voxtral-mini-tts-2603',
-        speed: 1,
-        available_voices: 'alloy,echo,fable,onyx,nova,shimmer',
-    };
-
-    get settingsHtml() {
-        let html = `
-        <div class="openrouter-tts-settings">
-            <h4>🤖 OpenRouter TTS (Voxtral)</h4>
-            <hr>
-            <label for="openrouter_tts_api_key">OpenRouter API Key:</label>
-            <input id="openrouter_tts_api_key" type="password" class="text_pole" placeholder="sk-or-v1-..." />
-            <small style="display:block; margin-bottom:8px; color:var(--grey70);">Stored locally in your SillyTavern settings. Never sent anywhere except OpenRouter.</small>
-            <label for="openrouter_tts_model">Model ID:</label>
-            <input id="openrouter_tts_model" type="text" class="text_pole" maxlength="500" value="${this.defaultSettings.model}"/>
-            <small style="display:block; margin-bottom:8px; color:var(--grey70);">Default: mistralai/voxtral-mini-tts-2603</small>
-            <label for="openrouter_tts_voices">Available Voices (comma separated):</label>
-            <input id="openrouter_tts_voices" type="text" class="text_pole" value="${this.defaultSettings.available_voices}"/>
-            <small style="display:block; margin-bottom:8px; color:var(--grey70);">These appear in the Voice Map dropdown below.</small>
-            <label for="openrouter_tts_speed">Speed: <span id="openrouter_tts_speed_output"></span></label>
-            <input type="range" id="openrouter_tts_speed" value="1" min="0.25" max="4" step="0.05">
-        </div>
-        `;
-        return html;
+function loadSettings() {
+    if (!extension_settings[EXTENSION_NAME]) {
+        extension_settings[EXTENSION_NAME] = {};
     }
-
-    async loadSettings(settings) {
-        if (Object.keys(settings).length == 0) {
-            console.info('OpenRouter TTS: Using default settings');
+    for (const key in defaultSettings) {
+        if (extension_settings[EXTENSION_NAME][key] === undefined) {
+            extension_settings[EXTENSION_NAME][key] = defaultSettings[key];
         }
+    }
+}
 
-        // Only accept keys defined in defaultSettings
-        this.settings = this.defaultSettings;
+/**
+ * Saves settings and updates UI
+ */
+function saveSettings() {
+    extension_settings[EXTENSION_NAME].enabled = $('#or_tts_enabled').prop('checked');
+    extension_settings[EXTENSION_NAME].apiKey = $('#or_tts_api_key').val();
+    extension_settings[EXTENSION_NAME].model = $('#or_tts_model').val();
+    extension_settings[EXTENSION_NAME].voice = $('#or_tts_voice').val();
+    extension_settings[EXTENSION_NAME].speed = parseFloat($('#or_tts_speed').val());
+    
+    // Trigger global save
+    getContext().saveSettings();
+}
 
-        for (const key in settings) {
-            if (key in this.settings) {
-                this.settings[key] = settings[key];
-            } else {
-                console.warn(`OpenRouter TTS: Ignoring unknown setting: ${key}`);
-            }
-        }
+/**
+ * Applies settings to the UI
+ */
+function applySettingsToUI() {
+    const settings = extension_settings[EXTENSION_NAME];
+    $('#or_tts_enabled').prop('checked', settings.enabled);
+    $('#or_tts_api_key').val(settings.apiKey);
+    $('#or_tts_model').val(settings.model);
+    $('#or_tts_voice').val(settings.voice);
+    $('#or_tts_speed').val(settings.speed);
+    $('#or_tts_speed_val').text(settings.speed);
+}
 
-        // Populate the UI with loaded values
-        $('#openrouter_tts_api_key').val(this.settings.apiKey);
-        $('#openrouter_tts_api_key').on('input', () => this.onSettingsChange());
-
-        $('#openrouter_tts_model').val(this.settings.model);
-        $('#openrouter_tts_model').on('input', () => this.onSettingsChange());
-
-        $('#openrouter_tts_voices').val(this.settings.available_voices);
-        $('#openrouter_tts_voices').on('input', () => this.onSettingsChange());
-
-        $('#openrouter_tts_speed').val(this.settings.speed);
-        $('#openrouter_tts_speed').on('input', () => this.onSettingsChange());
-        $('#openrouter_tts_speed_output').text(this.settings.speed);
-
-        await this.checkReady();
-        console.debug('OpenRouter TTS: Settings loaded');
+/**
+ * Generates audio using OpenRouter API and plays it
+ */
+async function generateAndPlay(text) {
+    const settings = extension_settings[EXTENSION_NAME];
+    
+    if (!settings.apiKey) {
+        toastr.error('OpenRouter TTS: API Key is missing. Please add it in the Extensions menu.');
+        return;
     }
 
-    onSettingsChange() {
-        this.settings.apiKey = String($('#openrouter_tts_api_key').val());
-        this.settings.model = String($('#openrouter_tts_model').val());
-        this.settings.available_voices = String($('#openrouter_tts_voices').val());
-        this.settings.speed = Number($('#openrouter_tts_speed').val());
-        $('#openrouter_tts_speed_output').text(this.settings.speed);
-        saveTtsProviderSettings();
-    }
-
-    async checkReady() {
-        this.voices = await this.fetchTtsVoiceObjects();
-    }
-
-    async onRefreshClick() {
-        this.voices = await this.fetchTtsVoiceObjects();
-    }
-
-    async getVoice(voiceName) {
-        if (this.voices.length == 0) {
-            this.voices = await this.fetchTtsVoiceObjects();
-        }
-        const match = this.voices.find(v => v.name == voiceName);
-        if (!match) {
-            throw `TTS Voice name ${voiceName} not found`;
-        }
-        return match;
-    }
-
-    async generateTts(text, voiceId) {
-        const response = await this.fetchTtsGeneration(text, voiceId);
-        return response;
-    }
-
-    async fetchTtsVoiceObjects() {
-        const voiceString = this.settings.available_voices || this.defaultSettings.available_voices;
-        return voiceString.split(',').map(v => v.trim()).filter(v => v).map(v => {
-            return { name: v, voice_id: v, lang: 'en-US' };
-        });
-    }
-
-    async previewTtsVoice(voiceId) {
-        this.audioElement.pause();
-        this.audioElement.currentTime = 0;
-
-        const text = 'The quick brown fox jumps over the lazy dog.';
-        const response = await this.fetchTtsGeneration(text, voiceId);
-        if (!response.ok) {
-            throw new Error(`HTTP ${response.status}`);
-        }
-
-        const audio = await response.blob();
-        const url = URL.createObjectURL(audio);
-        this.audioElement.src = url;
-        this.audioElement.play();
-        this.audioElement.onended = () => URL.revokeObjectURL(url);
-    }
-
-    /**
-     * Makes a direct call to OpenRouter's TTS API.
-     * OpenRouter supports CORS, so no server proxy is needed.
-     * Required headers: HTTP-Referer and X-Title (OpenRouter policy).
-     */
-    async fetchTtsGeneration(inputText, voiceId) {
-        if (!this.settings.apiKey) {
-            toastr.error('Please set your OpenRouter API key in the TTS settings.', 'OpenRouter TTS');
-            throw new Error('OpenRouter API key is not set');
-        }
-
-        console.info(`OpenRouter TTS: Generating for voice_id ${voiceId}, model ${this.settings.model}`);
-
+    try {
+        console.log(`[OpenRouter TTS] Generating audio for text: ${text.substring(0, 50)}...`);
         const response = await fetch('https://openrouter.ai/api/v1/audio/speech', {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${this.settings.apiKey}`,
+                'Authorization': `Bearer ${settings.apiKey}`,
                 'Content-Type': 'application/json',
                 'HTTP-Referer': 'https://sillytavern.app',
                 'X-Title': 'SillyTavern',
             },
             body: JSON.stringify({
-                model: this.settings.model,
-                input: inputText,
-                voice: voiceId,
+                model: settings.model,
+                input: text,
+                voice: settings.voice,
                 response_format: 'mp3',
-                speed: this.settings.speed,
+                speed: settings.speed,
             }),
         });
 
         if (!response.ok) {
             const errText = await response.text();
-            console.error('OpenRouter TTS generation failed:', response.status, errText);
-            toastr.error(`${response.status}: ${errText}`, 'OpenRouter TTS Failed');
-            throw new Error(`HTTP ${response.status}: ${errText}`);
+            toastr.error(`Error ${response.status}: ${errText}`, 'OpenRouter TTS Failed');
+            return;
         }
 
-        return response;
+        const audioBlob = await response.blob();
+        const url = URL.createObjectURL(audioBlob);
+
+        // Stop current playback
+        audioElement.pause();
+        audioElement.currentTime = 0;
+
+        // Play new audio
+        audioElement.src = url;
+        audioElement.play();
+        
+        // Clean up URL when done
+        audioElement.onended = () => URL.revokeObjectURL(url);
+    } catch (err) {
+        console.error('[OpenRouter TTS] Generation error:', err);
+        toastr.error('Failed to generate TTS audio. Check console.', 'OpenRouter TTS Error');
     }
 }
 
-// Register this provider with ST's TTS system when the extension loads
-jQuery(async () => {
-    try {
-        const { registerTtsProvider } = await import('../../tts/index.js');
-        registerTtsProvider('OpenRouter TTS', OpenRouterTtsProvider);
-        console.log('✅ OpenRouter TTS provider registered successfully');
-    } catch (e) {
-        console.error('❌ Failed to register OpenRouter TTS Provider:', e);
+/**
+ * Replaces message macros and strips markdown for TTS
+ */
+function cleanTextForTts(text) {
+    let cleaned = text.replace(/<[^>]*>?/gm, ''); // Remove HTML
+    cleaned = cleaned.replace(/\*[^*]*\*/g, ''); // Remove asterisks (actions)
+    cleaned = cleaned.replace(/```[\s\S]*?```/g, ''); // Remove code blocks
+    return cleaned.trim();
+}
+
+/**
+ * Handle new messages
+ */
+function onMessageReceived(messageId) {
+    const settings = extension_settings[EXTENSION_NAME];
+    if (!settings.enabled) return;
+
+    const chat = getContext().chat;
+    const msg = chat[messageId];
+
+    // Don't narrate system messages or empty messages
+    if (!msg || msg.is_system || !msg.mes) return;
+
+    // Only auto-play character messages (not user messages)
+    if (msg.is_user) return;
+
+    const textToNarrate = cleanTextForTts(msg.mes);
+    if (textToNarrate.length > 0) {
+        generateAndPlay(textToNarrate);
     }
+}
+
+/**
+ * Adds a play button next to messages
+ */
+function addPlayButtons() {
+    // Listen for clicks on the chat container
+    $('#chat').on('click', '.or-tts-play-btn', function () {
+        const messageId = $(this).closest('.mes').attr('mesid');
+        const chat = getContext().chat;
+        const msg = chat[messageId];
+        
+        if (msg && msg.mes) {
+            const textToNarrate = cleanTextForTts(msg.mes);
+            generateAndPlay(textToNarrate);
+        }
+    });
+}
+
+/**
+ * Inject the button when messages are rendered
+ */
+function injectButtonIntoMessage(messageId) {
+    const mesElement = $(`.mes[mesid="${messageId}"]`);
+    if (mesElement.length === 0) return;
+    
+    const extraButtonsContainer = mesElement.find('.extraMesButtons');
+    if (extraButtonsContainer.length > 0 && extraButtonsContainer.find('.or-tts-play-btn').length === 0) {
+        extraButtonsContainer.prepend(`
+            <div class="mes_button or-tts-play-btn fa-solid fa-volume-high" title="Play with OpenRouter TTS"></div>
+        `);
+    }
+}
+
+/**
+ * Initialize the extension
+ */
+jQuery(async () => {
+    loadSettings();
+
+    // Load UI HTML
+    const html = await renderExtensionTemplateAsync('third-party/STTTSopenrouter', 'index');
+    $('#extensions_settings').append(html);
+
+    applySettingsToUI();
+
+    // Add listeners to UI
+    $('#or_tts_enabled, #or_tts_api_key, #or_tts_model, #or_tts_voice').on('change input', saveSettings);
+    $('#or_tts_speed').on('input', function () {
+        $('#or_tts_speed_val').text($(this).val());
+        saveSettings();
+    });
+
+    // Event listeners for chat
+    eventSource.on(event_types.MESSAGE_RECEIVED, (messageId) => {
+        onMessageReceived(messageId);
+        injectButtonIntoMessage(messageId);
+    });
+
+    // Also inject buttons when chat is fully rendered
+    eventSource.on(event_types.CHAT_CHANGED, () => {
+        const chat = getContext().chat;
+        for (let i = 0; i < chat.length; i++) {
+            injectButtonIntoMessage(i);
+        }
+    });
+
+    addPlayButtons();
+
+    console.log('[OpenRouter TTS Standalone] Extension Loaded.');
 });

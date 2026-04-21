@@ -1,0 +1,26 @@
+<div id="openrouter_tts_container" class="list-group">
+    <div class="list-group-item">
+        <h4 style="margin: 0 0 10px 0; color: var(--SmartThemeBodyColor);">🤖 OpenRouter TTS (Standalone)</h4>
+        <small style="display:block; margin-bottom: 10px; color: var(--grey70);">
+            This is a standalone TTS extension. It plays audio when messages arrive.
+        </small>
+        
+        <label for="or_tts_enabled"><b>Enable Autoplay</b></label>
+        <input type="checkbox" id="or_tts_enabled">
+        
+        <hr>
+
+        <label for="or_tts_api_key"><b>OpenRouter API Key</b></label>
+        <input id="or_tts_api_key" type="password" class="text_pole" placeholder="sk-or-v1-..." />
+        
+        <label for="or_tts_model" style="margin-top: 10px;"><b>Model ID</b></label>
+        <input id="or_tts_model" type="text" class="text_pole" value="mistralai/voxtral-mini-tts-2603" />
+
+        <label for="or_tts_voice" style="margin-top: 10px;"><b>Default Voice</b></label>
+        <input id="or_tts_voice" type="text" class="text_pole" value="alloy" />
+        <small style="color: var(--grey70); display: block;">You can also paste a URL to a .wav or .mp3 file here for zero-shot voice cloning.</small>
+
+        <label for="or_tts_speed" style="margin-top: 10px;"><b>Speed: <span id="or_tts_speed_val">1</span>x</b></label>
+        <input id="or_tts_speed" type="range" min="0.25" max="4.0" step="0.25" value="1.0" />
+    </div>
+</div>

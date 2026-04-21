@@ -1,23 +1,18 @@
-.openrouter-tts-settings {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
+#openrouter_tts_container {
+    margin-bottom: 10px;
 }
 
-.openrouter-tts-settings h4 {
-    margin: 0 0 4px 0;
+#openrouter_tts_container label {
+    font-size: 14px;
 }
 
-.openrouter-tts-settings hr {
-    margin: 4px 0;
-    border-color: var(--SmartThemeBorderColor);
+.or-tts-play-btn {
+    cursor: pointer;
+    opacity: 0.7;
+    transition: opacity 0.2s;
 }
 
-.openrouter-tts-settings label {
-    font-weight: 600;
-    margin-top: 4px;
-}
-
-.openrouter-tts-settings small {
-    color: var(--grey70);
+.or-tts-play-btn:hover {
+    opacity: 1;
+    color: var(--SmartThemeQuoteColor);
 }
