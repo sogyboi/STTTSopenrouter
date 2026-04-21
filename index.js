@@ -1,12 +1,11 @@
 import { saveTtsProviderSettings } from '../../tts/index.js';
-import { getRequestHeaders } from '/script.js';
 
 export { OpenRouterTtsProvider };
 
 /**
  * OpenRouter TTS Provider for SillyTavern
  * Uses Mistral's Voxtral Mini TTS via OpenRouter's API.
- * Routes through ST's built-in OpenAI-compatible custom TTS proxy to avoid CORS.
+ * Makes direct calls to OpenRouter (they support CORS).
  */
 class OpenRouterTtsProvider {
     settings;
@@ -16,6 +15,7 @@ class OpenRouterTtsProvider {
 
     defaultSettings = {
         voiceMap: {},
+        apiKey: '',
         model: 'mistralai/voxtral-mini-tts-2603',
         speed: 1,
         available_voices: 'alloy,echo,fable,onyx,nova,shimmer',
@@ -26,22 +26,15 @@ class OpenRouterTtsProvider {
         <div class="openrouter-tts-settings">
             <h4>🤖 OpenRouter TTS (Voxtral)</h4>
             <hr>
-            <div class="flex-container alignItemsBaseline" style="margin-bottom: 10px;">
-                <small class="flex1">
-                    Uses ST's "OpenAI Compatible" API key slot.<br>
-                    Click the key icon to set your <b>OpenRouter API key</b> (sk-or-v1-...).
-                </small>
-                <div id="openrouter_tts_key" class="menu_button menu_button_icon manage-api-keys" data-key="api_key_custom_openai_tts">
-                    <i class="fa-solid fa-key"></i>
-                    <span>API Key</span>
-                </div>
-            </div>
+            <label for="openrouter_tts_api_key">OpenRouter API Key:</label>
+            <input id="openrouter_tts_api_key" type="password" class="text_pole" placeholder="sk-or-v1-..." />
+            <small style="display:block; margin-bottom:8px; color:var(--grey70);">Stored locally in your SillyTavern settings. Never sent anywhere except OpenRouter.</small>
             <label for="openrouter_tts_model">Model ID:</label>
             <input id="openrouter_tts_model" type="text" class="text_pole" maxlength="500" value="${this.defaultSettings.model}"/>
             <small style="display:block; margin-bottom:8px; color:var(--grey70);">Default: mistralai/voxtral-mini-tts-2603</small>
             <label for="openrouter_tts_voices">Available Voices (comma separated):</label>
             <input id="openrouter_tts_voices" type="text" class="text_pole" value="${this.defaultSettings.available_voices}"/>
-            <small style="display:block; margin-bottom:8px; color:var(--grey70);">These appear in the Voice Map dropdown. For voice cloning, add a custom name here and map it to a character.</small>
+            <small style="display:block; margin-bottom:8px; color:var(--grey70);">These appear in the Voice Map dropdown below.</small>
             <label for="openrouter_tts_speed">Speed: <span id="openrouter_tts_speed_output"></span></label>
             <input type="range" id="openrouter_tts_speed" value="1" min="0.25" max="4" step="0.05">
         </div>
@@ -66,6 +59,9 @@ class OpenRouterTtsProvider {
         }
 
         // Populate the UI with loaded values
+        $('#openrouter_tts_api_key').val(this.settings.apiKey);
+        $('#openrouter_tts_api_key').on('input', () => this.onSettingsChange());
+
         $('#openrouter_tts_model').val(this.settings.model);
         $('#openrouter_tts_model').on('input', () => this.onSettingsChange());
 
@@ -81,6 +77,7 @@ class OpenRouterTtsProvider {
     }
 
     onSettingsChange() {
+        this.settings.apiKey = String($('#openrouter_tts_api_key').val());
         this.settings.model = String($('#openrouter_tts_model').val());
         this.settings.available_voices = String($('#openrouter_tts_voices').val());
         this.settings.speed = Number($('#openrouter_tts_speed').val());
@@ -137,18 +134,27 @@ class OpenRouterTtsProvider {
     }
 
     /**
-     * Calls ST's built-in proxy at /api/openai/custom/generate-voice.
-     * This avoids CORS issues by having ST's Node server make the external request.
-     * The proxy reads the API key from SECRET_KEYS.CUSTOM_OPENAI_TTS.
+     * Makes a direct call to OpenRouter's TTS API.
+     * OpenRouter supports CORS, so no server proxy is needed.
+     * Required headers: HTTP-Referer and X-Title (OpenRouter policy).
      */
     async fetchTtsGeneration(inputText, voiceId) {
+        if (!this.settings.apiKey) {
+            toastr.error('Please set your OpenRouter API key in the TTS settings.', 'OpenRouter TTS');
+            throw new Error('OpenRouter API key is not set');
+        }
+
         console.info(`OpenRouter TTS: Generating for voice_id ${voiceId}, model ${this.settings.model}`);
 
-        const response = await fetch('/api/openai/custom/generate-voice', {
+        const response = await fetch('https://openrouter.ai/api/v1/audio/speech', {
             method: 'POST',
-            headers: getRequestHeaders(),
+            headers: {
+                'Authorization': `Bearer ${this.settings.apiKey}`,
+                'Content-Type': 'application/json',
+                'HTTP-Referer': 'https://sillytavern.app',
+                'X-Title': 'SillyTavern',
+            },
             body: JSON.stringify({
-                provider_endpoint: 'https://openrouter.ai/api/v1/audio/speech',
                 model: this.settings.model,
                 input: inputText,
                 voice: voiceId,
@@ -158,8 +164,10 @@ class OpenRouterTtsProvider {
         });
 
         if (!response.ok) {
-            toastr.error(response.statusText, 'OpenRouter TTS Generation Failed');
-            throw new Error(`HTTP ${response.status}: ${await response.text()}`);
+            const errText = await response.text();
+            console.error('OpenRouter TTS generation failed:', response.status, errText);
+            toastr.error(`${response.status}: ${errText}`, 'OpenRouter TTS Failed');
+            throw new Error(`HTTP ${response.status}: ${errText}`);
         }
 
         return response;
@@ -169,7 +177,6 @@ class OpenRouterTtsProvider {
 // Register this provider with ST's TTS system when the extension loads
 jQuery(async () => {
     try {
-        // Dynamic import to get registerTtsProvider from the TTS extension
         const { registerTtsProvider } = await import('../../tts/index.js');
         registerTtsProvider('OpenRouter TTS', OpenRouterTtsProvider);
         console.log('✅ OpenRouter TTS provider registered successfully');
