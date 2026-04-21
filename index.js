@@ -1,5 +1,5 @@
-import { saveTtsProviderSettings } from '../tts/index.js';
-import { getRequestHeaders } from '../../../../script.js';
+import { saveTtsProviderSettings } from '../../tts/index.js';
+import { getRequestHeaders } from '/script.js';
 
 export { OpenRouterTtsProvider };
 
@@ -170,7 +170,7 @@ class OpenRouterTtsProvider {
 jQuery(async () => {
     try {
         // Dynamic import to get registerTtsProvider from the TTS extension
-        const { registerTtsProvider } = await import('../tts/index.js');
+        const { registerTtsProvider } = await import('../../tts/index.js');
         registerTtsProvider('OpenRouter TTS', OpenRouterTtsProvider);
         console.log('✅ OpenRouter TTS provider registered successfully');
     } catch (e) {
