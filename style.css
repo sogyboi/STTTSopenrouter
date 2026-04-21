@@ -2,6 +2,28 @@
     margin-bottom: 10px;
 }
 
+.or-tts-vertical-layout {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+}
+
+.or-tts-vertical-layout hr {
+    width: 100%;
+    margin: 8px 0;
+    border-color: var(--SmartThemeBorderColor);
+}
+
+.or-tts-vertical-layout label {
+    margin-top: 8px;
+    margin-bottom: 4px;
+}
+
+.or-tts-vertical-layout input[type="checkbox"] {
+    align-self: flex-start;
+}
+
 #openrouter_tts_container label {
     font-size: 14px;
 }
