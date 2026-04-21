@@ -1,5 +1,5 @@
 {
-    "display_name": "OpenRouter TTS",
+    "display_name": "OpenRouter TTS (Voxtral)",
     "loading_order": 5,
     "js": "index.js",
     "css": "style.css",
