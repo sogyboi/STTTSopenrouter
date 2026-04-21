@@ -1,23 +1,23 @@
 .openrouter-tts-settings {
     display: flex;
     flex-direction: column;
-    gap: 10px;
-    padding-top: 10px;
+    gap: 6px;
 }
-.openrouter-tts-settings .setting-group {
-    display: flex;
-    flex-direction: column;
-    gap: 5px;
+
+.openrouter-tts-settings h4 {
+    margin: 0 0 4px 0;
 }
+
+.openrouter-tts-settings hr {
+    margin: 4px 0;
+    border-color: var(--SmartThemeBorderColor);
+}
+
 .openrouter-tts-settings label {
-    font-weight: bold;
+    font-weight: 600;
+    margin-top: 4px;
 }
-.openrouter-tts-settings input[type="text"],
-.openrouter-tts-settings input[type="password"] {
-    width: 100%;
-    padding: 5px;
-    background-color: var(--black50a);
-    color: var(--SmartThemeBodyColor);
-    border: 1px solid var(--SmartThemeBorderColor);
-    border-radius: 4px;
+
+.openrouter-tts-settings small {
+    color: var(--grey70);
 }
